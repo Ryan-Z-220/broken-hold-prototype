@@ -16,6 +16,7 @@ public class EnemyPrototype : MonoBehaviour
     public PlayerPrototype playerNoise;
     public OutpostStateManager outpostManager;
     private Quaternion initialRotation;
+    private CharacterController characterController;
 
     [Header("Perception")]
     public float hearingRadius = 4.0f;
@@ -43,6 +44,7 @@ public class EnemyPrototype : MonoBehaviour
     private void Awake()
     {
         enemyRenderer = GetComponent<Renderer>();
+        characterController = GetComponent<CharacterController>();
         initialRotation = transform.rotation;
     }
 
@@ -173,7 +175,10 @@ public class EnemyPrototype : MonoBehaviour
 
     private void HandleChase()
     {
-        float distance = Vector3.Distance(transform.position, player.position);
+        Vector3 toPlayer = player.position - transform.position;
+        toPlayer.y = 0f;
+
+        float distance = toPlayer.magnitude;
 
         if (distance <= attackDistance)
         {
@@ -181,12 +186,25 @@ public class EnemyPrototype : MonoBehaviour
             return;
         }
 
-        Vector3 direction = player.position - transform.position;
-        direction.y = 0f;
-        direction.Normalize();
+        if (toPlayer.sqrMagnitude < 0.001f)
+        {
+            return;
+        }
 
-        transform.position += direction * chaseSpeed * Time.deltaTime;
+        Vector3 direction = toPlayer.normalized;
+
         RotateToward(player.position);
+
+        if (characterController == null)
+        {
+            Debug.LogError(
+                $"{gameObject.name} has no CharacterController. " +
+                "Enemy movement has been stopped to prevent wall clipping."
+            );
+            return;
+        }
+
+        characterController.SimpleMove(direction * chaseSpeed);
     }
 
     private void HandleAttack()

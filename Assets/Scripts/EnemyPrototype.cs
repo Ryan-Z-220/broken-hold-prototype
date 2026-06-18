@@ -6,6 +6,7 @@ public class EnemyPrototype : MonoBehaviour
     {
         Idle,
         Suspicious,
+        Identifying,
         Chase,
         Attack,
         Defeated
@@ -23,6 +24,10 @@ public class EnemyPrototype : MonoBehaviour
     public float visionDistance = 8.0f;
     public float visionAngle = 80.0f;
     public float suspiciousDuration = 2.0f;
+
+    [Header("Identification")]
+    private bool playerIdentityEvaluated;
+    private bool playerConfirmedHostile;
 
     [Header("Movement")]
     public float chaseSpeed = 2.8f;
@@ -81,10 +86,25 @@ public class EnemyPrototype : MonoBehaviour
 
         if (sawPlayer)
         {
-            currentState = EnemyState.Chase;
             lastKnownPlayerPosition = player.position;
+
+            if (!playerIdentityEvaluated)
+            {
+                currentState = EnemyState.Identifying;
+            }
+            else if (
+                playerConfirmedHostile &&
+                currentState != EnemyState.Attack &&
+                currentState != EnemyState.Defeated
+            )
+            {
+                currentState = EnemyState.Chase;
+            }
         }
-        else if (heardPlayer && currentState == EnemyState.Idle)
+        else if (
+            heardPlayer &&
+            (currentState == EnemyState.Idle || currentState == EnemyState.Suspicious)
+        )
         {
             currentState = EnemyState.Suspicious;
             lastKnownPlayerPosition = player.position;
@@ -101,6 +121,11 @@ public class EnemyPrototype : MonoBehaviour
             case EnemyState.Suspicious:
                 SetColor(Color.yellow);
                 HandleSuspicious();
+                break;
+
+            case EnemyState.Identifying:
+                SetColor(Color.blue);
+                HandleIdentifying();
                 break;
 
             case EnemyState.Chase:
@@ -171,6 +196,37 @@ public class EnemyPrototype : MonoBehaviour
         {
             currentState = EnemyState.Idle;
         }
+    }
+
+    private void HandleIdentifying()
+    {
+        RotateToward(player.position);
+
+        playerConfirmedHostile = EvaluatePlayerIdentity();
+        playerIdentityEvaluated = true;
+
+        if (playerConfirmedHostile)
+        {
+            Debug.Log(
+                $"{gameObject.name} identified the player as hostile."
+            );
+
+            currentState = EnemyState.Chase;
+        }
+        else
+        {
+            Debug.Log(
+                $"{gameObject.name} identified the player as non-hostile."
+            );
+
+            currentState = EnemyState.Idle;
+        }
+    }
+
+    private bool EvaluatePlayerIdentity()
+    {
+        // v0.1.0: remain for later updates
+        return true;
     }
 
     private void HandleChase()
@@ -252,6 +308,9 @@ public class EnemyPrototype : MonoBehaviour
         {
             return;
         }
+
+        playerIdentityEvaluated = true;
+        playerConfirmedHostile = true;
 
         health -= amount;
         Debug.Log($"{gameObject.name} took damage. HP: {health}");

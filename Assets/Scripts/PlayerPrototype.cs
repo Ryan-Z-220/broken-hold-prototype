@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 
 public class PlayerPrototype : MonoBehaviour
@@ -26,9 +27,24 @@ public class PlayerPrototype : MonoBehaviour
     private float attackNoiseTimer;
     private float cooldownTimer;
 
+    [Header("Hit Feedback")]
+    public Color hitColor = Color.magenta;
+    public float hitFlashDuration = 0.15f;
+
+    private Renderer playerRenderer;
+    private Color originalColor;
+    private Coroutine hitFlashCoroutine;
+
     private void Awake()
     {
         controller = GetComponent<CharacterController>();
+        playerRenderer = GetComponent<Renderer>();
+
+        if (playerRenderer != null)
+        {
+            originalColor = playerRenderer.material.color;
+        }
+
         CurrentNoiseRadius = idleNoiseRadius;
     }
 
@@ -122,6 +138,37 @@ public class PlayerPrototype : MonoBehaviour
         {
             CurrentNoiseRadius = walkNoiseRadius;
         }
+    }
+
+    public void ReceiveHit(GameObject attacker)
+    {
+        string attackerName = attacker != null
+            ? attacker.name
+            : "Unknown attacker";
+
+        Debug.Log($"{gameObject.name} was hit by {attackerName}.");
+
+        if (playerRenderer == null)
+        {
+            return;
+        }
+
+        if (hitFlashCoroutine != null)
+        {
+            StopCoroutine(hitFlashCoroutine);
+        }
+
+        hitFlashCoroutine = StartCoroutine(FlashHitColor());
+    }
+
+    private IEnumerator FlashHitColor()
+    {
+        playerRenderer.material.color = hitColor;
+
+        yield return new WaitForSeconds(hitFlashDuration);
+
+        playerRenderer.material.color = originalColor;
+        hitFlashCoroutine = null;
     }
 
     private void OnDrawGizmos()

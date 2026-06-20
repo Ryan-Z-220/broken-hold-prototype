@@ -35,6 +35,8 @@ public class EnemyPrototype : MonoBehaviour
     public float attackDistance = 1.5f;
 
     [Header("Combat")]
+    public Transform attackPoint;
+    public float attackRadius = 1.0f;
     public int health = 2;
     public float attackCooldown = 1.5f;
 
@@ -144,7 +146,7 @@ public class EnemyPrototype : MonoBehaviour
     {
         float distance = Vector3.Distance(transform.position, player.position);
 
-        // 玩家噪音半径 + 敌人听觉半径相交，则认为敌人听到了玩家。
+        // If player's noise area intersect with enemy's hearing area, player identified as detected by enemy.
         return distance <= hearingRadius + playerNoise.CurrentNoiseRadius;
     }
 
@@ -267,7 +269,10 @@ public class EnemyPrototype : MonoBehaviour
     {
         RotateToward(player.position);
 
-        float distance = Vector3.Distance(transform.position, player.position);
+        float distance = Vector3.Distance(
+            transform.position,
+            player.position
+        );
 
         if (distance > attackDistance + 0.4f)
         {
@@ -280,7 +285,7 @@ public class EnemyPrototype : MonoBehaviour
         if (attackTimer <= 0f)
         {
             attackTimer = attackCooldown;
-            Debug.Log($"{gameObject.name} attacks player.");
+            PerformAttack();
         }
     }
 
@@ -300,6 +305,49 @@ public class EnemyPrototype : MonoBehaviour
             targetRotation,
             turnSpeed * Time.deltaTime
         );
+    }
+
+    private void PerformAttack()
+    {
+        Vector3 center = attackPoint != null
+            ? attackPoint.position
+            : transform.position + transform.forward * 1.0f;
+
+        Collider[] hits = Physics.OverlapSphere(
+            center,
+            attackRadius,
+            ~0,
+            QueryTriggerInteraction.Ignore
+        );
+
+        PlayerPrototype hitPlayer = null;
+
+        foreach (Collider hit in hits)
+        {
+            PlayerPrototype candidate =
+                hit.GetComponentInParent<PlayerPrototype>();
+
+            if (candidate == null)
+            {
+                continue;
+            }
+
+            hitPlayer = candidate;
+            break;
+        }
+
+        if (hitPlayer != null)
+        {
+            Debug.Log(
+                $"{gameObject.name} attacked and hit {hitPlayer.gameObject.name}."
+            );
+
+            hitPlayer.ReceiveHit(gameObject);
+        }
+        else
+        {
+            Debug.Log($"{gameObject.name} attacked but missed.");
+        }
     }
 
     public void TakeDamage(int amount)
@@ -354,11 +402,11 @@ public class EnemyPrototype : MonoBehaviour
 
     private void OnDrawGizmos()
     {
-        // 听觉范围
+        // hearing area
         Gizmos.color = Color.yellow;
         Gizmos.DrawWireSphere(transform.position, hearingRadius);
 
-        // 视野范围
+        // visible area
         Gizmos.color = Color.red;
 
         Vector3 leftRay = Quaternion.Euler(0f, -visionAngle * 0.5f, 0f) * transform.forward;
@@ -368,8 +416,12 @@ public class EnemyPrototype : MonoBehaviour
         Gizmos.DrawRay(transform.position + Vector3.up, rightRay * visionDistance);
         Gizmos.DrawRay(transform.position + Vector3.up, transform.forward * visionDistance);
 
-        // 攻击距离
+        // attack area
+        Vector3 attackCenter = attackPoint != null
+            ? attackPoint.position
+            : transform.position + transform.forward * 1.0f;
+
         Gizmos.color = Color.magenta;
-        Gizmos.DrawWireSphere(transform.position, attackDistance);
+        Gizmos.DrawWireSphere(attackCenter, attackRadius);
     }
 }

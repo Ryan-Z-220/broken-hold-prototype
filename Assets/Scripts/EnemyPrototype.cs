@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.AI;
 
 public class EnemyPrototype : MonoBehaviour
 {
@@ -17,7 +18,8 @@ public class EnemyPrototype : MonoBehaviour
     public PlayerPrototype playerNoise;
     public OutpostStateManager outpostManager;
     private Quaternion initialRotation;
-    private CharacterController characterController;
+    private NavMeshAgent navMeshAgent;
+    private bool navMeshWarningShown;
 
     [Header("Perception")]
     public float hearingRadius = 4.0f;
@@ -51,7 +53,7 @@ public class EnemyPrototype : MonoBehaviour
     private void Awake()
     {
         enemyRenderer = GetComponent<Renderer>();
-        characterController = GetComponent<CharacterController>();
+        navMeshAgent = GetComponent<NavMeshAgent>();
         initialRotation = transform.rotation;
     }
 
@@ -179,8 +181,24 @@ public class EnemyPrototype : MonoBehaviour
         return false;
     }
 
+    private void StopNavigation()
+    {
+        if (
+            navMeshAgent == null ||
+            !navMeshAgent.enabled ||
+            !navMeshAgent.isOnNavMesh
+        )
+        {
+            return;
+        }
+
+        navMeshAgent.isStopped = true;
+    }
+
     private void HandleIdle()
     {
+        StopNavigation();
+
         transform.rotation = Quaternion.Slerp(
             transform.rotation,
             initialRotation,
@@ -190,6 +208,7 @@ public class EnemyPrototype : MonoBehaviour
 
     private void HandleSuspicious()
     {
+        StopNavigation();
         RotateToward(lastKnownPlayerPosition);
 
         suspiciousTimer -= Time.deltaTime;
@@ -202,6 +221,7 @@ public class EnemyPrototype : MonoBehaviour
 
     private void HandleIdentifying()
     {
+        StopNavigation();
         RotateToward(player.position);
 
         playerConfirmedHostile = EvaluatePlayerIdentity();
@@ -240,33 +260,44 @@ public class EnemyPrototype : MonoBehaviour
 
         if (distance <= attackDistance)
         {
+            StopNavigation();
             currentState = EnemyState.Attack;
             return;
         }
 
-        if (toPlayer.sqrMagnitude < 0.001f)
-        {
-            return;
-        }
-
-        Vector3 direction = toPlayer.normalized;
-
-        RotateToward(player.position);
-
-        if (characterController == null)
+        if (navMeshAgent == null)
         {
             Debug.LogError(
-                $"{gameObject.name} has no CharacterController. " +
-                "Enemy movement has been stopped to prevent wall clipping."
+                $"{gameObject.name} has no NavMeshAgent component."
             );
             return;
         }
 
-        characterController.SimpleMove(direction * chaseSpeed);
+        if (!navMeshAgent.enabled || !navMeshAgent.isOnNavMesh)
+        {
+            if (!navMeshWarningShown)
+            {
+                Debug.LogWarning(
+                    $"{gameObject.name} is not placed on a valid NavMesh."
+                );
+
+                navMeshWarningShown = true;
+            }
+
+            return;
+        }
+
+        navMeshWarningShown = false;
+
+        navMeshAgent.speed = chaseSpeed;
+        navMeshAgent.stoppingDistance = attackDistance;
+        navMeshAgent.isStopped = false;
+        navMeshAgent.SetDestination(player.position);
     }
 
     private void HandleAttack()
     {
+        StopNavigation();
         RotateToward(player.position);
 
         float distance = Vector3.Distance(
@@ -378,6 +409,15 @@ public class EnemyPrototype : MonoBehaviour
         SetColor(Color.black);
 
         Collider collider = GetComponent<Collider>();
+
+        if (navMeshAgent != null &&
+            navMeshAgent.enabled &&
+            navMeshAgent.isOnNavMesh)
+        {
+            navMeshAgent.isStopped = true;
+            navMeshAgent.ResetPath();
+            navMeshAgent.enabled = false;
+        }
 
         if (collider != null)
         {

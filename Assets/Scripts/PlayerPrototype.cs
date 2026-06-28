@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 
 public class PlayerPrototype : MonoBehaviour
@@ -6,7 +7,7 @@ public class PlayerPrototype : MonoBehaviour
     [Header("Movement")]
     public float walkSpeed = 3.5f;
     public float runSpeed = 6.0f;
-    public float rotationSpeed = 12f;
+    public float rotationSpeed = 12.0f;
 
     [Header("Noise")]
     public float idleNoiseRadius = 0.5f;
@@ -21,19 +22,19 @@ public class PlayerPrototype : MonoBehaviour
     public float attackNoiseDuration = 0.35f;
     public float attackCooldown = 0.6f;
 
-    public float CurrentNoiseRadius { get; private set; }
-
-    private CharacterController controller;
-    private float attackNoiseTimer;
-    private float cooldownTimer;
-
     [Header("Hit Feedback")]
     public Color hitColor = Color.magenta;
     public float hitFlashDuration = 0.15f;
 
+    public float CurrentNoiseRadius { get; private set; }
+    public bool IsMakingActiveNoise { get; private set; }
+
+    private CharacterController controller;
     private Renderer playerRenderer;
     private Color originalColor;
     private Coroutine hitFlashCoroutine;
+    private float attackNoiseTimer;
+    private float cooldownTimer;
 
     private void Awake()
     {
@@ -46,6 +47,7 @@ public class PlayerPrototype : MonoBehaviour
         }
 
         CurrentNoiseRadius = idleNoiseRadius;
+        IsMakingActiveNoise = false;
     }
 
     private void Update()
@@ -60,16 +62,17 @@ public class PlayerPrototype : MonoBehaviour
         float x = Input.GetAxisRaw("Horizontal");
         float z = Input.GetAxisRaw("Vertical");
 
-        Vector3 input = new Vector3(x, 0f, z).normalized;
+        Vector3 input = new Vector3(x, 0.0f, z).normalized;
         bool isRunning = Input.GetKey(KeyCode.LeftShift);
-
         float speed = isRunning ? runSpeed : walkSpeed;
 
         if (input.sqrMagnitude > 0.01f)
         {
             controller.SimpleMove(input * speed);
 
-            Quaternion targetRotation = Quaternion.LookRotation(input);
+            Quaternion targetRotation =
+                Quaternion.LookRotation(input);
+
             transform.rotation = Quaternion.Slerp(
                 transform.rotation,
                 targetRotation,
@@ -86,37 +89,53 @@ public class PlayerPrototype : MonoBehaviour
     {
         cooldownTimer -= Time.deltaTime;
 
-        if (Input.GetMouseButtonDown(0) && cooldownTimer <= 0f)
+        if (
+            !Input.GetMouseButtonDown(0) ||
+            cooldownTimer > 0.0f
+        )
         {
-            cooldownTimer = attackCooldown;
-            attackNoiseTimer = attackNoiseDuration;
+            return;
+        }
 
-            Vector3 center = attackPoint != null
-                ? attackPoint.position
-                : transform.position + transform.forward * 1.2f;
+        cooldownTimer = attackCooldown;
+        attackNoiseTimer = attackNoiseDuration;
 
-            Collider[] hits = Physics.OverlapSphere(center, attackRadius);
+        Collider[] hits = Physics.OverlapSphere(
+            GetAttackCenter(),
+            attackRadius,
+            ~0,
+            QueryTriggerInteraction.Ignore
+        );
 
-            foreach (Collider hit in hits)
+        HashSet<EnemyPrototype> damagedEnemies =
+            new HashSet<EnemyPrototype>();
+
+        foreach (Collider hit in hits)
+        {
+            EnemyPrototype enemy =
+                hit.GetComponentInParent<EnemyPrototype>();
+
+            if (enemy == null || damagedEnemies.Contains(enemy))
             {
-                EnemyPrototype enemy = hit.GetComponent<EnemyPrototype>();
-
-                if (enemy != null)
-                {
-                    enemy.TakeDamage(attackDamage);
-                }
+                continue;
             }
 
-            Debug.Log("Player attacked.");
+            damagedEnemies.Add(enemy);
+            enemy.TakeDamage(attackDamage, transform);
         }
+
+        Debug.Log(
+            $"Player attacked and hit {damagedEnemies.Count} enemy/enemies."
+        );
     }
 
     private void UpdateNoise()
     {
-        if (attackNoiseTimer > 0f)
+        if (attackNoiseTimer > 0.0f)
         {
             attackNoiseTimer -= Time.deltaTime;
             CurrentNoiseRadius = attackNoiseRadius;
+            IsMakingActiveNoise = true;
             return;
         }
 
@@ -129,14 +148,17 @@ public class PlayerPrototype : MonoBehaviour
         if (!isMoving)
         {
             CurrentNoiseRadius = idleNoiseRadius;
+            IsMakingActiveNoise = false;
         }
         else if (isRunning)
         {
             CurrentNoiseRadius = runNoiseRadius;
+            IsMakingActiveNoise = true;
         }
         else
         {
             CurrentNoiseRadius = walkNoiseRadius;
+            IsMakingActiveNoise = true;
         }
     }
 
@@ -146,7 +168,9 @@ public class PlayerPrototype : MonoBehaviour
             ? attacker.name
             : "Unknown attacker";
 
-        Debug.Log($"{gameObject.name} was hit by {attackerName}.");
+        Debug.Log(
+            $"{gameObject.name} was hit by {attackerName}."
+        );
 
         if (playerRenderer == null)
         {
@@ -171,16 +195,25 @@ public class PlayerPrototype : MonoBehaviour
         hitFlashCoroutine = null;
     }
 
+    private Vector3 GetAttackCenter()
+    {
+        return attackPoint != null
+            ? attackPoint.position
+            : transform.position + transform.forward * 1.2f;
+    }
+
     private void OnDrawGizmos()
     {
         Gizmos.color = Color.cyan;
-        Gizmos.DrawWireSphere(transform.position, CurrentNoiseRadius);
-
-        Vector3 center = attackPoint != null
-            ? attackPoint.position
-            : transform.position + transform.forward * 1.2f;
+        Gizmos.DrawWireSphere(
+            transform.position,
+            CurrentNoiseRadius
+        );
 
         Gizmos.color = Color.red;
-        Gizmos.DrawWireSphere(center, attackRadius);
+        Gizmos.DrawWireSphere(
+            GetAttackCenter(),
+            attackRadius
+        );
     }
 }
